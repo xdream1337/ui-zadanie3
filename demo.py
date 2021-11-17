@@ -1,29 +1,10 @@
-import numpy
 import random
-from operator import attrgetter
-
-from main import N_POPULATION
-
-population = []     #pole ktore v sebe drzi vsetkych jedincov prvej generacie
-
-treasure_c = []     #pole obsahujuce dvojice suradnic pokladov
-
-start_c = [0, 0]    #pole so suradnicami startu, ktore sa neskor nastavi podla vystupnej hodnoty funkcie
-
-
-class Individual():                                                         #struktura jedinca ako objektu
-    def __init__(self, tape, path, treasures, fitness):
-        self.tape = []
-        self.tape.extend(tape)
-        self.path = path
-        self.fitness = fitness
-        self.treasures = treasures
+from copy import deepcopy
 
 class Seeker():
     def __init__(self, genome, moves, fitness, treasures): 
         self.moves = moves
-        self.genome = []
-        self.genome.extend(genome)
+        self.genome = genome
         self.fitness = fitness
         self.treasures = treasures
     
@@ -73,27 +54,52 @@ def tournament(generation, k):
     
     return best_player
 
+def tournament_start(generation, k):
+    while True:
+        seeker_1 = tournament(generation, k)
+        seeker_2 = tournament(generation, k)
+        
+        #print('seeker1', seeker_1.moves, seeker_1.genome, seeker_1.fitness, seeker_1.treasures)
+        #print('seeker1', seeker_2.moves, seeker_2.genome, seeker_2.fitness, seeker_2.treasures)
+        
+        #print(seeker_1 != seeker_2)
+        if seeker_1 != seeker_2:
+            break
+        
+    #print('TOURNAMENT RETURN')
+    #print('seeker1', seeker_1.moves, seeker_1.genome, seeker_1.treasures, seeker_1.fitness)
+    #print('seeker1', seeker_2.moves, seeker_2.genome, seeker_2.treasures, seeker_2.fitness)
+        
+    return seeker_1, seeker_2
 
-def set_fitness(individual):                                                #funkcia pocitajuca fitness jedincov
-    if individual.treasures != 0:
-        individual.fitness = 1000 * int(individual.treasures) - len(individual.moves)
-    else:
-        individual.fitness -= len(individual.moves)
+def elitism(generation, count):
+    elites = []
+    
+    gen_deepcopy = deepcopy(generation)
+    gen_deepcopy.sort(key=lambda x: x.fitness, reverse=True)
+    
+    for i in range(count):
+        elites.append(gen_deepcopy[i])
+    
+    return elites
 
 
-def count_treasures(seeker, pos, treasures):                    #funkcia pocitajuca najdene poklady                                #a ich nasledne odstranenie, aby sa program
-    for treasure in treasures:                                              #necyklil
+def count_treasures(seeker, pos, treasures):   
+    treasures_deepcopy = deepcopy(treasures)   
+    
+    for treasure in treasures_deepcopy:
         if pos[0] == treasure[0] and pos[1] == treasure[1]:
             seeker.treasures += 1
-            treasures.remove(treasure)
+            treasures_deepcopy.remove(treasure)
     
-    if len(treasures) == 0:
+    if len(treasures_deepcopy) == 0:
         return True
 
 
 def check_solution_and_fitness(start_pos, treasures, seeker, size): 
     solution = []#funkcia simulujuca pohyb po mape
     pos = [start_pos[0], start_pos[1]]
+    fitness = 0
     
     for move in seeker.moves:
         if move == 'U':
@@ -122,11 +128,11 @@ def check_solution_and_fitness(start_pos, treasures, seeker, size):
                 solution.append(move)
                 
     if seeker.treasures > 0:
-        seeker.fitness = 1000 * int(seeker.treasures) - len(seeker.moves)
+        fitness = seeker.treasures - (len(solution)/1000)
     else:
-        seeker.fitness -= len(seeker.moves)
+        fitness -= (len(solution)/1000)
         
-    return solution
+    return solution, fitness
 
 
 def read_gamefile():
@@ -153,7 +159,7 @@ def read_gamefile():
     
     return game_size, seeker_start_pos, treasure_pos, len(treasure_pos)
 
-def calculate_move(gene):                             #funkcia urcuje symboly podla poctu jednotiek v bunke
+def calculate_move(gene):                             
     move = gene & 3
     
     if move == 0:
@@ -182,7 +188,7 @@ def virtual_machine(genome):
         elif instruction == 2:
             index = address
         elif instruction == 3:
-            moves.append(calculate_move(genome[index]))      #tato funkcia nam naplna pole symbolov pohybu
+            moves.append(calculate_move(genome[index]))
 
         if instruction != 2:
             index += 1
@@ -192,14 +198,9 @@ def virtual_machine(genome):
     return moves
 
 
-def create_genome():                                                #funkcia na vytvorenie pamatovych buniek
-    return [int(random.randint(0, 255)) for i in range(64)]             #pamatove bunky obsahujuce instrukcie
+def create_genome():   
+    return [int(random.randint(0, 255)) for i in range(64)] 
 
-
-number_of_generations = input('Zadajte pocet generacii: ')
-population_size = input('Zadajte pocet jedincov pre jednu populaciu: ')
-              #funkcia ktora naplni pole dvojicami suradnic pokladov
-        #pocet pokladov pomocou ktoreho zistujeme uspesnost programu
 
     
 def generate_first_population(n_population):
@@ -215,29 +216,31 @@ def generate_first_population(n_population):
         
     return generation
 
-control_flag = 0
-
-
+N_GENERATIONS = int(input('Zadajte pocet generacii: '))
+N_POPULATION = int(input('Zadajte pocet jedincov pre jednu populaciu: '))
+ELITISM_COUNT = 2
 
 def life_cycle():     
     game_size, start_pos, treasures, treasure_count = read_gamefile()
     generation = generate_first_population(N_POPULATION)
     
-    for i in range(int(number_of_generations)):
+    for i in range(int(N_GENERATIONS)):
         print('Generacia cislo: ' + str(i))
         for seeker in generation:
-            solution = check_solution_and_fitness(start_pos[:], treasures[:], seeker, game_size)
+            solution, fitness = check_solution_and_fitness(start_pos[:], treasures[:], seeker, game_size)
+            seeker.fitness = fitness
             
             if seeker.treasures == treasure_count:
                 print('Jedinec z ' +str(i) +'. generacie nasiel vsetky poklady, jeho cesta bola: ', solution)
                 return
             
-            print(seeker.genome, seeker.treasures, seeker.fitness, seeker.moves)
+            print(seeker.genome, seeker.treasures, seeker.fitness, seeker, seeker.moves)
 
         
         new_generation = []
-
-        for counter in range(int(len(generation) / 2)):
+        
+        
+        for j in range(int(N_POPULATION / 2)):
             while True:
                 individual1 = tournament(generation, 3)
                 individual2 = tournament(generation, 3)
@@ -248,6 +251,26 @@ def life_cycle():
             mutate(new_children[1])
             new_generation.append(new_children[0])
             new_generation.append(new_children[1])
+        
+        """
+        while len(new_generation) != N_POPULATION:
+            if len(new_generation) < ELITISM_COUNT:
+                elites = elitism(generation, ELITISM_COUNT)
+                for elite in elites:
+                    new_generation.append(elite)
+                    print('elites', elite.fitness)
+            else:
+                seekers = tournament_start(generation, 3)
+                new_seekers = crossover(seekers[0], seekers[1])
+                mutate(new_seekers[0])
+                mutate(new_seekers[1])
+                
+                if len(new_generation) != N_POPULATION-1:
+                    new_generation.append(new_seekers[0])
+                    new_generation.append(new_seekers[1])
+                else:
+                    new_generation.append(new_seekers[0])"""
+        
         generation.clear()
         generation.extend(new_generation)
     print()
