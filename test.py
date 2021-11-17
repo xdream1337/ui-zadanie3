@@ -170,6 +170,7 @@ for i in range(int(number_of_generations)):
         how_many_treasures(start_c[:], treasure_c[:], member, size)
         if member.treasures == number_of_treasures:
             print('Jedinec z ' +str(i) +'. generacie nasiel vsetky poklady, jeho cesta bola: ', member.path)
+            print(member.tape, member.treasures, member.fitness, member.path)
             control_flag = 1
             break
         else:

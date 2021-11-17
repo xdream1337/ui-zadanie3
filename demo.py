@@ -1,10 +1,10 @@
 import random
-from copy import deepcopy
 
 class Seeker():
     def __init__(self, genome, moves, fitness, treasures): 
         self.moves = moves
-        self.genome = genome
+        self.genome = []
+        self.genome.extend(genome)
         self.fitness = fitness
         self.treasures = treasures
     
@@ -54,52 +54,20 @@ def tournament(generation, k):
     
     return best_player
 
-def tournament_start(generation, k):
-    while True:
-        seeker_1 = tournament(generation, k)
-        seeker_2 = tournament(generation, k)
-        
-        #print('seeker1', seeker_1.moves, seeker_1.genome, seeker_1.fitness, seeker_1.treasures)
-        #print('seeker1', seeker_2.moves, seeker_2.genome, seeker_2.fitness, seeker_2.treasures)
-        
-        #print(seeker_1 != seeker_2)
-        if seeker_1 != seeker_2:
-            break
-        
-    #print('TOURNAMENT RETURN')
-    #print('seeker1', seeker_1.moves, seeker_1.genome, seeker_1.treasures, seeker_1.fitness)
-    #print('seeker1', seeker_2.moves, seeker_2.genome, seeker_2.treasures, seeker_2.fitness)
-        
-    return seeker_1, seeker_2
 
-def elitism(generation, count):
-    elites = []
-    
-    gen_deepcopy = deepcopy(generation)
-    gen_deepcopy.sort(key=lambda x: x.fitness, reverse=True)
-    
-    for i in range(count):
-        elites.append(gen_deepcopy[i])
-    
-    return elites
-
-
-def count_treasures(seeker, pos, treasures):   
-    treasures_deepcopy = deepcopy(treasures)   
-    
-    for treasure in treasures_deepcopy:
+def count_treasures(seeker, pos, treasures):                    
+    for treasure in treasures:
         if pos[0] == treasure[0] and pos[1] == treasure[1]:
             seeker.treasures += 1
-            treasures_deepcopy.remove(treasure)
+            treasures.remove(treasure)
     
-    if len(treasures_deepcopy) == 0:
+    if len(treasures) == 0:
         return True
 
 
 def check_solution_and_fitness(start_pos, treasures, seeker, size): 
     solution = []#funkcia simulujuca pohyb po mape
     pos = [start_pos[0], start_pos[1]]
-    fitness = 0
     
     for move in seeker.moves:
         if move == 'U':
@@ -128,11 +96,11 @@ def check_solution_and_fitness(start_pos, treasures, seeker, size):
                 solution.append(move)
                 
     if seeker.treasures > 0:
-        fitness = seeker.treasures - (len(solution)/1000)
+        seeker.fitness = seeker.treasures - (len(solution)/1000)
     else:
-        fitness -= (len(solution)/1000)
+        seeker.fitness -= (len(solution)/1000)
         
-    return solution, fitness
+    return solution
 
 
 def read_gamefile():
@@ -218,7 +186,6 @@ def generate_first_population(n_population):
 
 N_GENERATIONS = int(input('Zadajte pocet generacii: '))
 N_POPULATION = int(input('Zadajte pocet jedincov pre jednu populaciu: '))
-ELITISM_COUNT = 2
 
 def life_cycle():     
     game_size, start_pos, treasures, treasure_count = read_gamefile()
@@ -227,19 +194,17 @@ def life_cycle():
     for i in range(int(N_GENERATIONS)):
         print('Generacia cislo: ' + str(i))
         for seeker in generation:
-            solution, fitness = check_solution_and_fitness(start_pos[:], treasures[:], seeker, game_size)
-            seeker.fitness = fitness
+            solution = check_solution_and_fitness(start_pos[:], treasures[:], seeker, game_size)
             
             if seeker.treasures == treasure_count:
                 print('Jedinec z ' +str(i) +'. generacie nasiel vsetky poklady, jeho cesta bola: ', solution)
                 return
             
-            print(seeker.genome, seeker.treasures, seeker.fitness, seeker, seeker.moves)
+            print(seeker.genome, seeker.treasures, seeker.fitness, seeker.moves)
 
         
         new_generation = []
-        
-        
+
         for j in range(int(N_POPULATION / 2)):
             while True:
                 individual1 = tournament(generation, 3)
@@ -251,26 +216,6 @@ def life_cycle():
             mutate(new_children[1])
             new_generation.append(new_children[0])
             new_generation.append(new_children[1])
-        
-        """
-        while len(new_generation) != N_POPULATION:
-            if len(new_generation) < ELITISM_COUNT:
-                elites = elitism(generation, ELITISM_COUNT)
-                for elite in elites:
-                    new_generation.append(elite)
-                    print('elites', elite.fitness)
-            else:
-                seekers = tournament_start(generation, 3)
-                new_seekers = crossover(seekers[0], seekers[1])
-                mutate(new_seekers[0])
-                mutate(new_seekers[1])
-                
-                if len(new_generation) != N_POPULATION-1:
-                    new_generation.append(new_seekers[0])
-                    new_generation.append(new_seekers[1])
-                else:
-                    new_generation.append(new_seekers[0])"""
-        
         generation.clear()
         generation.extend(new_generation)
     print()
