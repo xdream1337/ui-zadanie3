@@ -2,6 +2,8 @@ import numpy
 import random
 from operator import attrgetter
 
+from main import N_POPULATION
+
 population = []     #pole ktore v sebe drzi vsetkych jedincov prvej generacie
 
 treasure_c = []     #pole obsahujuce dvojice suradnic pokladov
@@ -17,28 +19,48 @@ class Individual():                                                         #str
         self.fitness = fitness
         self.treasures = treasures
 
+class Seeker():
+    def __init__(self, genome, moves, fitness, treasures): 
+        self.moves = moves
+        self.genome = []
+        self.genome.extend(genome)
+        self.fitness = fitness
+        self.treasures = treasures
+    
+    def __eq__(self, other): 
+        if not isinstance(other, Seeker):
+            # don't attempt to compare against unrelated types
+            return NotImplemented
+
+        return self.moves == other.moves and self.genome == other.genome and self.fitness == other.fitness and self.treasures == other.treasures
+
 
 def mutate(child):                                                          #funkcia pre mutaciu jedincov
     for i in range(64):
         random_num = random.randint(1, 100)
         if random_num <= 3:
-            child.tape[i] = random.randint(0, 255)
+            child.genome[i] = random.randint(0, 255)
 
 
-def crossover(individual1, individual2):                                    #funkcia na krizenie jedincov
-    index = random.randint(0, len(individual1.tape) - 1)
-    new_tape1 = []
-    new_tape2 = []
-    for i in range(len(individual1.tape)):
-        if i >= index:
-            new_tape1.append(individual2.tape[i])
-            new_tape2.append(individual1.tape[i])
+def crossover(seeker_1, seeker_2):                                    #funkcia na krizenie jedincov
+    crossover_point = random.randint(0, 63)
+    
+    genome_1 = []
+    genome_2 = []
+    
+    for i in range(64):
+        if i >= crossover_point:
+            genome_1.append(seeker_2.genome[i])
+            genome_2.append(seeker_1.genome[i])
         else:
-            new_tape1.append(individual1.tape[i])
-            new_tape2.append(individual2.tape[i])
-    final_individual1 = Individual(new_tape1, get_path(new_tape1[:]), 0, 0)
-    final_individual2 = Individual(new_tape2, get_path(new_tape2[:]), 0, 0)
-    return final_individual1, final_individual2
+            genome_1.append(seeker_1.genome[i])
+            genome_2.append(seeker_2.genome[i])
+            
+    seeker_parent_1 = Seeker(genome_1, virtual_machine(genome_1[:]), 0, 0)
+    seeker_parent_2 = Seeker(genome_2, virtual_machine(genome_2[:]), 0, 0)
+    
+    return seeker_parent_1, seeker_parent_2
+
 
 
 def tournament(generation, k):
@@ -54,149 +76,180 @@ def tournament(generation, k):
 
 def set_fitness(individual):                                                #funkcia pocitajuca fitness jedincov
     if individual.treasures != 0:
-        individual.fitness = 1000 * int(individual.treasures) - len(individual.path)
+        individual.fitness = 1000 * int(individual.treasures) - len(individual.moves)
     else:
-        individual.fitness -= len(individual.path)
+        individual.fitness -= len(individual.moves)
 
 
-def count_treasures(individual, coord, treasures, size):                    #funkcia pocitajuca najdene poklady
-    if coord[0] < size and coord[1] < size:                                 #a ich nasledne odstranenie, aby sa program
-        for each in treasures:                                              #necyklil
-            if coord[0] == each[0] and coord[1] == each[1]:
-                individual.treasures += 1
-                treasures.remove(each)
+def count_treasures(seeker, pos, treasures):                    #funkcia pocitajuca najdene poklady                                #a ich nasledne odstranenie, aby sa program
+    for treasure in treasures:                                              #necyklil
+        if pos[0] == treasure[0] and pos[1] == treasure[1]:
+            seeker.treasures += 1
+            treasures.remove(treasure)
+    
+    if len(treasures) == 0:
         return True
-    return False
 
 
-def how_many_treasures(start_c, treasure_c, individual, size):              #funkcia simulujuca pohyb po mape
-    for move in individual.path:
-        if move == 'P':
-            start_c[0] += 1
-            if not count_treasures(individual, start_c, treasure_c, size):
+def check_solution_and_fitness(start_pos, treasures, seeker, size): 
+    solution = []#funkcia simulujuca pohyb po mape
+    pos = [start_pos[0], start_pos[1]]
+    
+    for move in seeker.moves:
+        if move == 'U':
+            pos[1] -= 1
+            if pos[1] < 0 or count_treasures(seeker, pos, treasures):
                 break
-        elif move == 'L':
-            start_c[0] -= 1
-            if not count_treasures(individual, start_c, treasure_c, size):
-                break
-        elif move == 'H':
-            start_c[1] -= 1
-            if not count_treasures(individual, start_c, treasure_c, size):
-                break
+            else:
+                solution.append(move)
         elif move == 'D':
-            start_c[1] += 1
-            if not count_treasures(individual, start_c, treasure_c, size):
+            pos[1] += 1
+            if pos[1] > size[1] or count_treasures(seeker, pos, treasures):
                 break
+            else:
+                solution.append(move)
+        elif move == 'L':
+            pos[0] -= 1
+            if pos[0] < 0 or count_treasures(seeker, pos, treasures):
+                break
+            else:
+                solution.append(move)
+        elif move == 'R':
+            pos[0] += 1
+            if pos[0] > size[0] or count_treasures(seeker, pos, treasures):
+                break
+            else:
+                solution.append(move)
+                
+    if seeker.treasures > 0:
+        seeker.fitness = 1000 * int(seeker.treasures) - len(seeker.moves)
+    else:
+        seeker.fitness -= len(seeker.moves)
+        
+    return solution
 
 
-def get_size():                                                 #funkcia ktora ziska rozmer mriezky/mapy
-    file = open("size.txt", "r")
-    size = int(file.readline())
-    return size
+def read_gamefile():
+    game_file = open('gamefile.txt', 'r')
+    treasure_pos = []
+    
+    for i, line in enumerate(game_file):
+        # nacital som prazdny riadok, break z loopu
+        if not line:
+            break
+        
+        line = line.strip().split(' ') 
+        x = int(line[0])
+        y = int(line[1])
+        # nacitavam velkost x, y mapy
+        if (i == 0):
+            game_size = [x, y]
+        # nacitavam poziciu hladaca pokladu
+        elif (i == 1):
+            seeker_start_pos = [x, y]
+        # nacitavam pozicie pokladov
+        elif (i > 1):
+            treasure_pos.append([x, y])
+    
+    return game_size, seeker_start_pos, treasure_pos, len(treasure_pos)
 
-
-def get_start_coordinates(start_c):                             #funkcia vracajuca suradnice startu
-    file = open("start.txt", "r")
-    for line in file:
-        start_c[0], start_c[1] = (int(line.split()[0]), int(line.split()[1]))
-    return start_c
-
-
-def get_treasure_coordinates(treasure_c):                       #funkcia vracajuca suradnice vsetkych pokladov
-   file = open("coords.txt", "r")
-   for line in file:
-      treasure_c.append((int(line.split()[0]), int(line.split()[1])))
-
-
-def calculate_movement(givenValue):                             #funkcia urcuje symboly podla poctu jednotiek v bunke
-    counter = 0
-    while givenValue != 0:
-        if givenValue & 1:
-            counter += 1
-
-        givenValue = givenValue >> 1
-
-    if 0 <= counter <= 2:
-        return 'H'
-    elif 2 < counter <= 4:
+def calculate_move(gene):                             #funkcia urcuje symboly podla poctu jednotiek v bunke
+    move = gene & 3
+    
+    if move == 0:
+        return 'U'
+    elif move == 1:
         return 'D'
-    elif 4 < counter <= 6:
-        return 'P'
-    elif 6 < counter <= 8:
+    elif move == 2:
         return 'L'
+    elif move == 3:
+        return 'R'
 
 
-def get_path(tape):                                               #funkcia pomocou ktorej ziskame cestu kazdeho jedinca
-    tapeIndex = 0
+def virtual_machine(genome):   
+    #funkcia pomocou ktorej ziskame cestu kazdeho jedinca
+    index = 0
     moves = []
+    
     for i in range(500):
-        instruction = tape[tapeIndex] >> 6
-        address = tape[tapeIndex] & 63
+        instruction = genome[index] >> 6
+        address = genome[index] & 63
 
         if instruction == 0:
-            tape[address] += 1
+            genome[address] += 1
         elif instruction == 1:
-            tape[address] -= 1
+            genome[address] -= 1
         elif instruction == 2:
-            tapeIndex = address
+            index = address
         elif instruction == 3:
-            moves.append(calculate_movement(tape[tapeIndex]))      #tato funkcia nam naplna pole symbolov pohybu
+            moves.append(calculate_move(genome[index]))      #tato funkcia nam naplna pole symbolov pohybu
 
         if instruction != 2:
-            tapeIndex += 1
-            if tapeIndex > 63:
-                tapeIndex = 0
-    return moves                                                  #funkcia nam vrati pole so symbolmi pohybu(P, D,...)
+            index += 1
+            if index > 63:
+                index = 0
+    
+    return moves
 
 
-def create_individual():                                                #funkcia na vytvorenie pamatovych buniek
-    tape = [int(random.randint(0, 255)) for i in range(64)]             #pamatove bunky obsahujuce instrukcie
-    return tape
+def create_genome():                                                #funkcia na vytvorenie pamatovych buniek
+    return [int(random.randint(0, 255)) for i in range(64)]             #pamatove bunky obsahujuce instrukcie
 
 
 number_of_generations = input('Zadajte pocet generacii: ')
 population_size = input('Zadajte pocet jedincov pre jednu populaciu: ')
-size = get_size()                                   #rozmer mapy/mriezky
-start_c = get_start_coordinates(start_c)            #startovna pozicia jedincov
-get_treasure_coordinates(treasure_c)                #funkcia ktora naplni pole dvojicami suradnic pokladov
-number_of_treasures = len(treasure_c)               #pocet pokladov pomocou ktoreho zistujeme uspesnost programu
+              #funkcia ktora naplni pole dvojicami suradnic pokladov
+        #pocet pokladov pomocou ktoreho zistujeme uspesnost programu
 
-
-for ind in range(int(population_size)):
-    seeker = create_individual()
-    individual = Individual(seeker, get_path(seeker[:]), 0, 0)
-    population.append(individual)
+    
+def generate_first_population(n_population):
+    generation = []
+    
+    for i in range(0, n_population):
+        genome = create_genome()
+        seeker = Seeker(genome, virtual_machine(genome[:]), 0, 0) 
+        
+        print(seeker.genome, seeker.moves)
+        
+        generation.append(seeker)
+        
+    return generation
 
 control_flag = 0
-for i in range(int(number_of_generations)):
-    print('Generacia cislo: ' + str(i))
-    for member in population:
-        how_many_treasures(start_c[:], treasure_c[:], member, size)
-        if member.treasures == number_of_treasures:
-            print('Jedinec z ' +str(i) +'. generacie nasiel vsetky poklady, jeho cesta bola: ', member.path)
-            control_flag = 1
-            break
-        else:
-            set_fitness(member)
+
+
+
+def life_cycle():     
+    game_size, start_pos, treasures, treasure_count = read_gamefile()
+    generation = generate_first_population(N_POPULATION)
+    
+    for i in range(int(number_of_generations)):
+        print('Generacia cislo: ' + str(i))
+        for seeker in generation:
+            solution = check_solution_and_fitness(start_pos[:], treasures[:], seeker, game_size)
+            
+            if seeker.treasures == treasure_count:
+                print('Jedinec z ' +str(i) +'. generacie nasiel vsetky poklady, jeho cesta bola: ', solution)
+                return
+            
+            print(seeker.genome, seeker.treasures, seeker.fitness, seeker.moves)
+
         
-        print(member.tape, member.treasures, member.fitness, member.path)
+        new_generation = []
 
-    if control_flag == 1:
-        break
-    new_generation = []
+        for counter in range(int(len(generation) / 2)):
+            while True:
+                individual1 = tournament(generation, 3)
+                individual2 = tournament(generation, 3)
+                if not individual1 is individual2:
+                    break
+            new_children = crossover(individual1, individual2)
+            mutate(new_children[0])
+            mutate(new_children[1])
+            new_generation.append(new_children[0])
+            new_generation.append(new_children[1])
+        generation.clear()
+        generation.extend(new_generation)
+    print()
 
-    for counter in range(int(len(population) / 2)):
-        while True:
-            individual1 = tournament(population, 3)
-            individual2 = tournament(population, 3)
-            if not individual1 is individual2:
-                break
-        new_children = crossover(individual1, individual2)
-        mutate(new_children[0])
-        mutate(new_children[1])
-        new_generation.append(new_children[0])
-        new_generation.append(new_children[1])
-    population.clear()
-    population.extend(new_generation)
-print()
-
+life_cycle()

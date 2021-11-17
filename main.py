@@ -35,10 +35,10 @@ def read_gamefile():
         y = int(line[1])
         # nacitavam velkost x, y mapy
         if (i == 0):
-            game_size = (x, y)
+            game_size = [x, y]
         # nacitavam poziciu hladaca pokladu
         elif (i == 1):
-            seeker_start_pos = (x, y)
+            seeker_start_pos = [x, y]
         # nacitavam pozicie pokladov
         elif (i > 1):
             treasure_pos.append([x, y])
