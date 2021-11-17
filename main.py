@@ -2,17 +2,17 @@ import random
 from operator import attrgetter
 
 # CONFIG VALUES
-N_POPULATION = 10
+N_POPULATION = 20
 N_GENERATIONS = 10
 MUTATION_PERCENTAGE = 3
 DEBUG = 1
 
 class Seeker():
-    def __init__(self): 
-        self.moves = []
-        self.genome = []
-        self.fitness = 0
-        self.treasures = 0
+    def __init__(self,genome, moves, fitness, treasures): 
+        self.moves = moves
+        self.genome = genome
+        self.fitness = fitness
+        self.treasures = treasures
     
     def __eq__(self, other): 
         if not isinstance(other, Seeker):
@@ -49,25 +49,32 @@ game_size, seeker_start_pos, treasure_pos = read_gamefile()
 print(len(treasure_pos))
 
 def calculate_move(gene):
-    move = gene & 3
-    
-    if move == 0:
+    counter = 0
+    while gene != 0:
+        if gene & 1:
+            counter += 1
+
+        gene = gene >> 1
+
+    if 0 <= counter <= 2:
         return 'H'
-    elif move == 1:
+    elif 2 < counter <= 4:
         return 'D'
-    elif move == 2:
+    elif 4 < counter <= 6:
+        return 'P'
+    elif 6 < counter <= 8:
         return 'L'
-    elif move == 3:
-        return 'R'
 
-def calculate_treasures(seeker, pos):
-    for treasure in treasure_pos:
-        if treasure[0] == pos[0] and treasure[1] == pos[1]:
-            seeker.fitness += 1
-            seeker.treasures += 1
-            treasure_pos.remove(treasure)
+def calculate_treasures(seeker, pos, size, treasures):
+    if pos[0] < size[0] and pos[1] < size[1]:                                 #a ich nasledne odstranenie, aby sa program
+        for each in treasures:                                              #necyklil
+            if pos[0] == each[0] and pos[1] == each[1]:
+                seeker.treasures += 1
+                treasures.remove(each)
+        return True
+    return False
 
-def calculate_fitness(seeker):
+def how_many_treasures(seeker, seeker_start_pos, game_size, treasures):
     number_of_moves = len(seeker.moves)
     seeker_pos = [seeker_start_pos[0], seeker_start_pos[1]]
     
@@ -75,61 +82,73 @@ def calculate_fitness(seeker):
         move = seeker.moves[i]
         
         if move == 'H':
-            seeker_pos[0] -= 1
-            if seeker_pos[0] < 0:
+            seeker_pos[1] -= 1
+            if not calculate_treasures(seeker, seeker_pos, game_size, treasures):
                 break
         elif move == 'D':
-            seeker_pos[0] += 1
-            if seeker_pos[0] > game_size[0]:
+            seeker_pos[1] += 1
+            if not calculate_treasures(seeker, seeker_pos, game_size, treasures):
                 break
         elif move == 'L':
-            seeker_pos[1] -= 1
-            if seeker_pos[1] < 0:
+            seeker_pos[0] -= 1
+            if not calculate_treasures(seeker, seeker_pos, game_size, treasures):
                 break
         elif move == 'R':
-            seeker_pos[1] += 1
-            if seeker_pos[1] > game_size[1]:
+            seeker_pos[0] += 1
+            if not calculate_treasures(seeker, seeker_pos, game_size, treasures):
                 break
-        
-        calculate_treasures(seeker, seeker_pos)
+
+def get_fitness(seeker):
+    fitness = 0
+    if seeker.treasures != 0:
+        fitness = 1000 * int(seeker.treasures) - len(seeker.moves)
+    else:
+        fitness -= len(seeker.moves)
     
-    seeker.fitness -= len(seeker.moves)/1000
+    return fitness
         
 
-def virtual_machine(seeker):
-    instruction_counter = 0
+def virtual_machine(genome):
+    tapeindex = 0
+    moves = []
     
     # pocet genov ma byt vzdy 64
-    for i in range(0, 64):
+    for i in range(500):
         
-        if instruction_counter > 500:
-            break
-        else:
-            instruction_counter += 1
-        
-        instruction = seeker.genome[i] >> 6
-        address = seeker.genome[i] & 63
+        instruction = genome[tapeindex] >> 6
+        address = genome[tapeindex] & 63
         
         # inkrementacia
         if instruction == 0:
-            seeker.genome[address] += 1
+            genome[address] += 1
         elif instruction == 1:
-            seeker.genome[address] -= 1
+            genome[address] -= 1
         elif instruction == 2:
-            i = address
+            tapeindex = address
         elif instruction == 3:
-            seeker.moves.append(calculate_move(seeker.genome[address])) # spytat sa ci i alebo address 
+            moves.append(calculate_move(genome[tapeindex])) # spytat sa ci i alebo address 
+        
+        if instruction != 2:
+            tapeindex += 1
+            if tapeindex > 63:
+                tapeindex = 0
+                
+    
+    return moves
         
             
-def create_genome(seeker):
-    seeker.genome = [int(random.randint(0, 255)) for i in range(64)]
+def create_genome():
+    return [int(random.randint(0, 255)) for i in range(64)]
 
 def generate_first_population(n_population):
     generation = []
     
     for i in range(0, n_population):
-        seeker = Seeker()
-        create_genome(seeker)
+        genome = create_genome()
+        seeker = Seeker(genome, virtual_machine(genome), 0, 0) 
+        
+        print(seeker.genome, seeker.moves)
+        
         generation.append(seeker)
         
     return generation
@@ -152,9 +171,6 @@ def tournament(generation, k):
     return max(contestants, key=attrgetter('fitness'))
 
 def tournament_start(generation, k):
-    seeker_1 = None
-    seeker_2 = None
-    
     while True:
         seeker_1 = tournament(generation, k)
         seeker_2 = tournament(generation, k)
@@ -170,28 +186,30 @@ def tournament_start(generation, k):
     #print('seeker1', seeker_1.moves, seeker_1.genome, seeker_1.treasures, seeker_1.fitness)
     #print('seeker1', seeker_2.moves, seeker_2.genome, seeker_2.treasures, seeker_2.fitness)
         
-    return [seeker_1, seeker_2]
+    return seeker_1, seeker_2
 
 def crossover(seekers):     
     #funkcia na krizenie jedincov
-    crossover_point = random.randint(0, 63)
+    crossover_point = random.randint(0, len(seekers[0].genome)-1)
     
-    seeker_1 = Seeker()
-    seeker_2 = Seeker()
+    genome_1, genome_2 = [], []
     
     for i in range(0, 64):
         if i >= crossover_point:
-            seeker_1.genome.append(seekers[1].genome[i])
-            seeker_2.genome.append(seekers[0].genome[i])
+            genome_1.append(seekers[1].genome[i])
+            genome_2.append(seekers[0].genome[i])
         else:
-            seeker_1.genome.append(seekers[0].genome[i])
-            seeker_2.genome.append(seekers[1].genome[i])
+            genome_1.append(seekers[0].genome[i])
+            genome_2.append(seekers[1].genome[i])
+    
+    seeker_1 = Seeker(genome_1, virtual_machine(genome_1), 0, 0)
+    seeker_2 = Seeker(genome_2, virtual_machine(genome_2), 0, 0) 
             
             
     #print('seeker1 treasures', seeker_1.treasures, ' moves', seeker_1.moves, '  genome', seeker_1.genome, 'treasures', seeker_1.treasures, 'fitness', seeker_1.fitness)
     #print('seeker2 treasures', seeker_2.treasures, ' moves', seeker_2.moves, '  genome', seeker_2.genome, 'treasures', seeker_2.treasures, 'fitness', seeker_2.fitness)
     
-    return [seeker_1, seeker_2]
+    return seeker_1, seeker_2
 
 def mutate(seeker):
     for i in range(0, 64):
@@ -212,19 +230,20 @@ def game_start(generation):
         max_treasures = 0
         
         for seeker in generation:
-            virtual_machine(seeker)
-            calculate_fitness(seeker)
+            how_many_treasures(seeker, seeker_start_pos, game_size, treasure_pos)
             
             if seeker.treasures > max_treasures:
                 max_treasures = seeker.treasures
 
-            print('seeker treasures', seeker.treasures, ' moves', seeker.moves, '  genome', seeker.genome, 'treasures', seeker.treasures)
+            
                         
-            if seeker.treasures == len(treasure_pos):
+            if seeker.treasures == 2:
                 print('hej hou, hej hou, nasiel som vsetky poklady!!!!', max_treasures)
                 return
+            else:
+                seeker.fitness = get_fitness(seeker)
             
-                
+            print('seeker treasures', seeker.treasures, ' moves', seeker.moves, '  genome', seeker.genome, 'treasures', seeker.treasures, seeker.fitness)
             
         new_generation = []
 
@@ -247,6 +266,12 @@ def game_start(generation):
 
 
 game_start(generation)
+
+
+
+
+
+
 
 
 

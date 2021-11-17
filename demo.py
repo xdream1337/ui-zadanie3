@@ -42,10 +42,14 @@ def crossover(individual1, individual2):                                    #fun
 
 
 def tournament(generation, k):
-    contestants = []
+    best_player = None
+    
     for i in range(k):
-       contestants.append(random.choice(generation))
-    return max(contestants, key=attrgetter('fitness'))
+        player = random.choice(generation)
+        if best_player is None or player.fitness > best_player.fitness:
+            best_player = player
+    
+    return best_player
 
 
 def set_fitness(individual):                                                #funkcia pocitajuca fitness jedincov
@@ -165,7 +169,7 @@ for ind in range(int(population_size)):
 
 control_flag = 0
 for i in range(int(number_of_generations)):
-    print('Generacia cislo: ' + str(i), len(population))
+    print('Generacia cislo: ' + str(i))
     for member in population:
         how_many_treasures(start_c[:], treasure_c[:], member, size)
         if member.treasures == number_of_treasures:
@@ -174,7 +178,7 @@ for i in range(int(number_of_generations)):
             break
         else:
             set_fitness(member)
-            
+        
         print(member.tape, member.treasures, member.fitness, member.path)
 
     if control_flag == 1:
